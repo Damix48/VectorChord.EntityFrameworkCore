@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>VectorChord.EntityFrameworkCore</AssemblyName>
+    <RootNamespace>VectorChord.EntityFrameworkCore</RootNamespace>
+    <Version>0.1.0</Version>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <Authors>Damiano Zanardo</Authors>
+    <PackageProjectUrl>https://github.com/Damix48/VectorChord.EntityFrameworkCore</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/Damix48/VectorChord.EntityFrameworkCore</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <Description>Unofficial EF Core integration for VectorChord: indexes, operators, and PostgreSQL-side vector quantization. Not affiliated with, endorsed by, or sponsored by TensorChord or the VectorChord project.</Description>
+    <NoWarn>$(NoWarn);EF1001</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Pgvector.EntityFrameworkCore" Version="0.3.0" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="[10.0.3,11.0.0)" />
+    <None Include="../../README.md" Pack="true" PackagePath="/" />
+    <None Include="../../LICENSE" Pack="true" PackagePath="/" />
+  </ItemGroup>
+</Project>

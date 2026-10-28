@@ -1,0 +1,116 @@
+name: Build, test, and publish
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["v[0-9]*", "[0-9]*"]
+  pull_request:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+env:
+  SOLUTION: VectorChord.EntityFrameworkCore.slnx
+  LIBRARY_PROJECT: src/VectorChord.EntityFrameworkCore/VectorChord.EntityFrameworkCore.csproj
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  build:
+    name: Build and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    services:
+      postgres:
+        image: tensorchord/vchord-postgres:pg17-v1.1.1
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      VECTORCHORD_TEST_CONNECTION: Host=localhost;Port=5432;Database=vectorchord_dotnet_test;Username=postgres;Password=postgres
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Determine package version
+        id: version
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
+        run: |
+          if [[ -z "$RELEASE_TAG" ]]; then
+            version="$(dotnet msbuild "$LIBRARY_PROJECT" -getProperty:Version -nologo)"
+          else
+            version="${RELEASE_TAG#v}"
+            number='(0|[1-9][0-9]*)'
+            identifier='(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)'
+            pattern="^$number\\.$number\\.$number(-$identifier(\\.$identifier)*)?$"
+            if [[ ! "$version" =~ $pattern ]]; then
+              echo "::error::Release tags must be SemVer versions such as v1.2.3 or v1.2.3-rc.1."
+              exit 1
+            fi
+          fi
+          printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
+
+      - name: Restore
+        run: dotnet restore "$SOLUTION"
+
+      - name: Build
+        env:
+          PACKAGE_VERSION: ${{ steps.version.outputs.version }}
+        run: dotnet build "$SOLUTION" --configuration Release --no-restore -p:Version="$PACKAGE_VERSION" -p:ContinuousIntegrationBuild=true
+
+      - name: Test (including VectorChord integration tests)
+        run: dotnet test "$SOLUTION" --configuration Release --no-build --no-restore
+
+  publish:
+    name: Publish to GitHub Packages
+    needs: build
+    if: github.event_name == 'release' || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: write
+    concurrency:
+      group: nuget-${{ github.repository }}-${{ needs.build.outputs.version }}
+      cancel-in-progress: false
+    env:
+      PACKAGE_VERSION: ${{ needs.build.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Pack the tested release
+        run: >-
+          dotnet pack "$LIBRARY_PROJECT" --configuration Release --output artifacts
+          -p:Version="$PACKAGE_VERSION" -p:ContinuousIntegrationBuild=true
+
+      - name: Publish
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PACKAGE_OWNER: ${{ github.repository_owner }}
+        run: |
+          dotnet nuget add source "https://nuget.pkg.github.com/$PACKAGE_OWNER/index.json" \
+            --name github --username "$GITHUB_ACTOR" --password "$GITHUB_TOKEN" --store-password-in-clear-text
+          dotnet nuget push "artifacts/*.nupkg" --source github --api-key "$GITHUB_TOKEN" --skip-duplicate

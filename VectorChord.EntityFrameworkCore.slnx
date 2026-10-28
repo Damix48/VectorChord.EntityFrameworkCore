@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="src/VectorChord.EntityFrameworkCore/VectorChord.EntityFrameworkCore.csproj" />
+  <Project Path="tests/VectorChord.EntityFrameworkCore.Tests.csproj" />
+</Solution>
