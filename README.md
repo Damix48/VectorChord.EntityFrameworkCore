@@ -11,7 +11,12 @@ choice**, not another CLR type. Quantization and dequantization run in PostgreSQ
 
 ## Installation
 
-Configure this GitHub Packages feed as a NuGet source:
+```sh
+# nuget.org
+dotnet add package VectorChord.EntityFrameworkCore
+```
+
+The same package is mirrored to GitHub Packages, which you can add as an extra source:
 
 ```text
 https://nuget.pkg.github.com/Damix48/index.json
@@ -21,10 +26,6 @@ https://nuget.pkg.github.com/Damix48/index.json
 using a classic personal access token with `read:packages`, or an authorized
 workflow's `GITHUB_TOKEN`. Authentication is required even for public packages.
 Keep nuget.org enabled for dependencies, and never commit tokens to NuGet configuration.
-
-```sh
-dotnet add package VectorChord.EntityFrameworkCore
-```
 
 ## Setup
 
@@ -303,6 +304,23 @@ compatible representations; comparisons between different RaBitQ formats are rej
 VectorChord 1.1.1 can produce `NaN` for some near-zero quantized L2 distances due to
 floating-point rounding. The library preserves the server's result rather than
 silently substituting another metric.
+
+## Releasing
+
+Pushing a SemVer tag (`v1.2.3` or `v1.2.3-rc.1`) or publishing a GitHub release packs
+the library and pushes it to nuget.org and GitHub Packages. The version comes from the
+tag; branch builds use `<Version>` from the project file and never publish.
+
+nuget.org publishing uses
+[trusted publishing](https://learn.microsoft.com/en-us/nuget/nuget-org/trusted-publishing),
+so no long-lived API key is stored. Maintainer setup, once: on nuget.org, under
+**Trusted Publishing**, add a policy with Repository Owner `Damix48`, Repository
+`VectorChord.EntityFrameworkCore`, Workflow File `ci.yml` (file name only, no path),
+Environment empty. The nuget.org profile name is in `ci.yml`; it is not a credential.
+
+CI exchanges the OIDC token for a short-lived API key immediately before pushing;
+those keys live one hour and are single-use, so the login step must stay next to the
+push step.
 
 ## Credits
 

@@ -79,7 +79,7 @@ jobs:
         run: dotnet test "$SOLUTION" --configuration Release --no-build --no-restore
 
   publish:
-    name: Publish to GitHub Packages
+    name: Publish to nuget.org and GitHub Packages
     needs: build
     if: github.event_name == 'release' || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/'))
     runs-on: ubuntu-latest
@@ -87,6 +87,7 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write
     concurrency:
       group: nuget-${{ github.repository }}-${{ needs.build.outputs.version }}
       cancel-in-progress: false
@@ -106,7 +107,18 @@ jobs:
           dotnet pack "$LIBRARY_PROJECT" --configuration Release --output artifacts
           -p:Version="$PACKAGE_VERSION" -p:ContinuousIntegrationBuild=true
 
-      - name: Publish
+      - name: NuGet login (OIDC to short-lived API key)
+        id: nuget-login
+        uses: NuGet/login@v1
+        with:
+          user: Damix48
+
+      - name: Publish to nuget.org
+        run: >-
+          dotnet nuget push "artifacts/*.nupkg" --source https://api.nuget.org/v3/index.json
+          --api-key "${{ steps.nuget-login.outputs.NUGET_API_KEY }}" --skip-duplicate
+
+      - name: Publish to GitHub Packages
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PACKAGE_OWNER: ${{ github.repository_owner }}
