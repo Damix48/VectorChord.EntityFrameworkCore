@@ -12,20 +12,8 @@ choice**, not another CLR type. Quantization and dequantization run in PostgreSQ
 ## Installation
 
 ```sh
-# nuget.org
 dotnet add package VectorChord.EntityFrameworkCore
 ```
-
-The same package is mirrored to GitHub Packages, which you can add as an extra source:
-
-```text
-https://nuget.pkg.github.com/Damix48/index.json
-```
-
-[Authenticate the feed](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-nuget-registry#authenticating-to-github-packages)
-using a classic personal access token with `read:packages`, or an authorized
-workflow's `GITHUB_TOKEN`. Authentication is required even for public packages.
-Keep nuget.org enabled for dependencies, and never commit tokens to NuGet configuration.
 
 ## Setup
 
@@ -308,8 +296,8 @@ silently substituting another metric.
 ## Releasing
 
 Pushing a SemVer tag (`v1.2.3` or `v1.2.3-rc.1`) or publishing a GitHub release packs
-the library and pushes it to nuget.org and GitHub Packages. The version comes from the
-tag; branch builds use `<Version>` from the project file and never publish.
+the library and pushes it to nuget.org. The version comes from the tag; branch builds
+use `<Version>` from the project file and never publish.
 
 nuget.org publishing uses
 [trusted publishing](https://learn.microsoft.com/en-us/nuget/nuget-org/trusted-publishing),
