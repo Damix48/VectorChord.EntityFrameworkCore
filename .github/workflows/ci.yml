@@ -114,17 +114,18 @@ jobs:
           user: Damix48
 
       - name: Publish to nuget.org
-        run: |
-          dotnet nuget push "artifacts/*.nupkg" --source https://api.nuget.org/v3/index.json \
-            --api-key "${{ steps.nuget-login.outputs.NUGET_API_KEY }}" --skip-duplicate
-          dotnet nuget push "artifacts/*.snupkg" --source https://api.nuget.org/v3/index.json \
-            --api-key "${{ steps.nuget-login.outputs.NUGET_API_KEY }}" --skip-duplicate
+        # dotnet nuget push uploads the sibling .snupkg automatically; do not push it again.
+        run: >-
+          dotnet nuget push "artifacts/*.nupkg" --source https://api.nuget.org/v3/index.json
+          --api-key "${{ steps.nuget-login.outputs.NUGET_API_KEY }}" --skip-duplicate
 
       - name: Publish to GitHub Packages
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # GitHub Packages rejects the workflow token for some NuGet pushes; a classic PAT
+          # with write:packages in GH_PACKAGES_TOKEN takes precedence when the secret exists.
+          GITHUB_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN || secrets.GITHUB_TOKEN }}
           PACKAGE_OWNER: ${{ github.repository_owner }}
         run: |
           dotnet nuget add source "https://nuget.pkg.github.com/$PACKAGE_OWNER/index.json" \
-            --name github --username "$GITHUB_ACTOR" --password "$GITHUB_TOKEN" --store-password-in-clear-text
-          dotnet nuget push "artifacts/*.nupkg" --source github --api-key "$GITHUB_TOKEN" --skip-duplicate
+            --name github --username "$PACKAGE_OWNER" --password "$GITHUB_TOKEN" --store-password-in-clear-text
+          dotnet nuget push "artifacts/*.nupkg" --source github --api-key "$GITHUB_TOKEN" --skip-duplicate --no-symbols
