@@ -3,6 +3,8 @@ using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Migrations.Operations;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Infrastructure.Internal;
+using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
+using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata.Internal;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Migrations;
 
 namespace VectorChord.EntityFrameworkCore.Internal;
@@ -16,8 +18,25 @@ internal sealed class VectorChordMigrationsSqlGenerator(
     {
         var extensions = operation.GetPostgresExtensions().ToArray();
         // Npgsql orders extension names alphabetically: vchord would otherwise precede its dependency.
-        if (extensions.Any(e => e.Name == "vchord") && extensions.FirstOrDefault(e => e.Name == "vector") is { } vector)
+        if (extensions.FirstOrDefault(e => e.Name == "vector") is { } vector
+            && extensions.Any(e => e.Name == "vchord"))
+        {
             GenerateCreateExtension(vector, model, builder);
+            // Emitted above; drop it so the base implementation does not repeat it after vchord.
+            var name = NpgsqlAnnotationNames.PostgresExtensionPrefix + vector.Name;
+            var value = operation.FindAnnotation(name)?.Value;
+            operation.RemoveAnnotation(name);
+            try
+            {
+                base.Generate(operation, model, builder);
+            }
+            finally
+            {
+                operation.AddAnnotation(name, value);
+            }
+            return;
+        }
+
         base.Generate(operation, model, builder);
     }
 

@@ -62,6 +62,26 @@ public sealed class MigrationTests
     }
 
     [Fact]
+    public void Extensions_are_created_once_with_dependencies_first()
+    {
+        using var db = TestDb.Create();
+        var model = db.GetService<IDesignTimeModel>().Model;
+        var operations = db.GetService<IMigrationsModelDiffer>()
+            .GetDifferences(null, model.GetRelationalModel());
+        var generator = db.GetService<IMigrationsSqlGenerator>();
+
+        var first = string.Join("\n", generator.Generate(operations, model).Select(x => x.CommandText));
+        var second = string.Join("\n", generator.Generate(operations, model).Select(x => x.CommandText));
+
+        Assert.Equal(first, second);
+        Assert.Single(first.Split('\n'), line => line.Contains("CREATE EXTENSION IF NOT EXISTS vector", StringComparison.Ordinal));
+        Assert.Single(first.Split('\n'), line => line.Contains("CREATE EXTENSION IF NOT EXISTS vchord", StringComparison.Ordinal));
+        Assert.True(
+            first.IndexOf("CREATE EXTENSION IF NOT EXISTS vector", StringComparison.Ordinal)
+            < first.IndexOf("CREATE EXTENSION IF NOT EXISTS vchord", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void Repeated_generation_is_deterministic_and_does_not_mutate_operations()
     {
         using var db = TestDb.Create();

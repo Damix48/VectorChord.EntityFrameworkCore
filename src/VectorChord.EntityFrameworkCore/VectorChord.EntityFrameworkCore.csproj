@@ -14,10 +14,14 @@
     <RepositoryType>git</RepositoryType>
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
     <Description>Unofficial EF Core integration for VectorChord: indexes, operators, and PostgreSQL-side vector quantization. Not affiliated with, endorsed by, or sponsored by TensorChord or the VectorChord project.</Description>
+    <PackageTags>postgresql;npgsql;npgsql-efcore;entity-framework-core;ef-core;pgvector;vectorchord;vector;embeddings;rabitq;simd;ai</PackageTags>
+    <Copyright>Copyright (c) 2026 Damiano Zanardo</Copyright>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
     <NoWarn>$(NoWarn);EF1001</NoWarn>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Pgvector.EntityFrameworkCore" Version="0.3.0" />
+    <PackageReference Include="Pgvector.EntityFrameworkCore" Version="[0.3.0,0.4.0)" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="[10.0.3,11.0.0)" />
     <None Include="../../README.md" Pack="true" PackagePath="/" />
     <None Include="../../LICENSE" Pack="true" PackagePath="/" />
