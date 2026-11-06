@@ -54,7 +54,7 @@ internal sealed class VectorChordConvention : IModelFinalizingConvention
                 if (index.IsUnique || index.Properties.Count != 1)
                     throw new InvalidOperationException("VectorChord indexes must be non-unique, single-column indexes.");
 
-                var property = index.Properties[0];
+                var property = (IReadOnlyProperty)index.Properties[0];
                 if (QuantizedVectorTypeMapping.IsQuantized(property.GetColumnType())
                     && index.GetAnnotations().Any(a => a.Name == "Npgsql:StorageParameter:options"
                         && a.Value is string text && text.Contains("residual_quantization = true", StringComparison.Ordinal)))

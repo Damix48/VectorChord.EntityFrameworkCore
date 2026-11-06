@@ -9,9 +9,17 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Migrations;
 
 namespace VectorChord.EntityFrameworkCore.Internal;
 
-internal sealed class VectorChordMigrationsSqlGenerator(
-    MigrationsSqlGeneratorDependencies dependencies,
-    INpgsqlSingletonOptions options) : NpgsqlMigrationsSqlGenerator(dependencies, options)
+internal sealed class VectorChordMigrationsSqlGenerator
+#if NET11_0
+    (MigrationsSqlGeneratorDependencies dependencies,
+        INpgsqlSingletonOptions options,
+        Microsoft.EntityFrameworkCore.Query.IQuerySqlGeneratorFactory querySqlGeneratorFactory)
+    : NpgsqlMigrationsSqlGenerator(dependencies, options, querySqlGeneratorFactory)
+#else
+    (MigrationsSqlGeneratorDependencies dependencies,
+        INpgsqlSingletonOptions options)
+    : NpgsqlMigrationsSqlGenerator(dependencies, options)
+#endif
 {
     protected override void Generate(AlterDatabaseOperation operation, IModel? model,
         MigrationCommandListBuilder builder)

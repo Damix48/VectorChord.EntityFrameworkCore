@@ -47,6 +47,11 @@ jobs:
         with:
           dotnet-version: "10.0.x"
 
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          dotnet-version: "11.0.x"
+          dotnet-quality: preview
+
       - name: Determine package version
         id: version
         shell: bash
@@ -100,6 +105,11 @@ jobs:
       - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
         with:
           dotnet-version: "10.0.x"
+
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          dotnet-version: "11.0.x"
+          dotnet-quality: preview
 
       - name: Pack the tested release
         run: >-

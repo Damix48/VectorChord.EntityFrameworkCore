@@ -3,7 +3,8 @@
 > **Unofficial community integration.** This project and its author are not
 > affiliated with, endorsed by, or sponsored by TensorChord or the VectorChord project.
 
-VectorChord integration for **.NET 10, EF Core 10, and Npgsql 10**.
+VectorChord integration for **.NET 10 / EF Core 10 / Npgsql 10** and
+**.NET 11 / EF Core 11 / Npgsql 11** (the `net11.0` build is tested against EF 11 RC).
 Tested against **PostgreSQL 17, pgvector 0.8.2, and VectorChord 1.1.1**.
 
 Reuses `Pgvector.Vector` and `Pgvector.HalfVector`. RaBitQ is a **database storage
