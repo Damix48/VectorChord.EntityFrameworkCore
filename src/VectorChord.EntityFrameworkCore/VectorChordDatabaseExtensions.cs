@@ -1,12 +1,46 @@
 using System.Globalization;
+using System.Linq.Expressions;
 using System.Runtime.CompilerServices;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Metadata;
 
 namespace VectorChord.EntityFrameworkCore;
 
 public static class VectorChordDatabaseExtensions
 {
+    /// <summary>
+    /// Rebuilds the <c>vchordrq</c> index on <paramref name="property"/> with changed build options,
+    /// using <c>CREATE INDEX CONCURRENTLY</c> / <c>DROP INDEX CONCURRENTLY</c> / <c>ALTER INDEX ... RENAME</c>.
+    /// Options left unset keep their current values.
+    /// </summary>
+    public static async Task RebuildVectorChordRqIndexAsync<TEntity>(this DatabaseFacade database,
+        Expression<Func<TEntity, object?>> property, Action<VectorChordRqIndexOptions> configure,
+        CancellationToken cancellationToken = default) where TEntity : class
+    {
+        ArgumentNullException.ThrowIfNull(database);
+        ArgumentNullException.ThrowIfNull(property);
+        ArgumentNullException.ThrowIfNull(configure);
+        if (database.CurrentTransaction is not null)
+            throw new InvalidOperationException(
+                "VectorChord index rebuilds use CONCURRENTLY and cannot run inside a transaction.");
+
+        var member = (property.Body as UnaryExpression)?.Operand as MemberExpression ?? property.Body as MemberExpression;
+        var name = member?.Member.Name
+            ?? throw new ArgumentException("Expected a property accessor.", nameof(property));
+        // Index annotations do not survive into the runtime model.
+        var entity = database.GetService<IDesignTimeModel>().Model.FindEntityType(typeof(TEntity))
+            ?? throw new InvalidOperationException($"{typeof(TEntity).Name} is not part of the model.");
+        var index = entity.GetIndexes().FirstOrDefault(i => i.GetMethod() == "vchordrq"
+                && i.Properties.Count == 1 && i.Properties[0].Name == name)
+            ?? throw new InvalidOperationException($"No vchordrq index is configured on {typeof(TEntity).Name}.{name}.");
+
+        var options = index.GetVectorChordRqOptions() ?? new VectorChordRqIndexOptions();
+        configure(options);
+        foreach (var statement in VectorChordRqIndexSql.BuildRebuild(index, options))
+            await database.ExecuteSqlRawAsync(statement, cancellationToken).ConfigureAwait(false);
+    }
+
     public static Task SetVectorChordRqSearchOptionsAsync(this DatabaseFacade database,
         VectorChordRqSearchOptions options, CancellationToken cancellationToken = default)
     {

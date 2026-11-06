@@ -13,7 +13,18 @@ namespace VectorChord.Tests;
 
 public sealed class DatabaseFixture : IAsyncLifetime
 {
-    public string Connection => Environment.GetEnvironmentVariable("VECTORCHORD_TEST_CONNECTION")!;
+    // Test projects for each target framework run in parallel, so each gets its own database.
+    public string Connection { get; } = FrameworkConnection(
+        Environment.GetEnvironmentVariable("VECTORCHORD_TEST_CONNECTION"));
+
+    private static string FrameworkConnection(string? connection)
+    {
+        if (connection is null) return "";
+        var builder = new NpgsqlConnectionStringBuilder(connection);
+        builder.Database += "_net" + Environment.Version.Major;
+        return builder.ConnectionString;
+    }
+
     public async Task InitializeAsync()
     {
         if (Environment.GetEnvironmentVariable("VECTORCHORD_TEST_CONNECTION") is null) return;
@@ -342,6 +353,68 @@ public sealed class PostgreSqlTests(DatabaseFixture fixture) : IClassFixture<Dat
             var restored = await db.Database.SqlQueryRaw<string>("SELECT current_setting('vchordrq.epsilon') AS \"Value\"").SingleAsync();
             Assert.Equal(original, restored);
         }
+    }
+
+    [PostgreSqlFact]
+    public async Task Rebuild_swaps_the_rq_index_concurrently_and_stays_usable()
+    {
+        var log = new CommandLog();
+        await using var db = TestDb.Create(fixture.Connection, log);
+        for (var i = 1; i <= 64; i++)
+            db.Add(new Document { Name = $"doc{i}", Dense = Document.V(i % 7, i % 11, i % 13) });
+        await db.SaveChangesAsync();
+        log.Commands.Clear();
+
+        await db.Database.RebuildVectorChordRqIndexAsync<Document>(x => x.Dense, rq =>
+        {
+            rq.Lists = [8];
+            rq.Probes = [2];
+        });
+
+        Assert.Equal(4, log.Commands.Count);
+        Assert.StartsWith("DROP INDEX CONCURRENTLY IF EXISTS", log.Commands[0]);
+        Assert.StartsWith("CREATE INDEX CONCURRENTLY", log.Commands[1]);
+        Assert.StartsWith("DROP INDEX CONCURRENTLY", log.Commands[2]);
+        Assert.StartsWith("ALTER INDEX", log.Commands[3]);
+
+        var definition = await db.Database.SqlQueryRaw<string>(
+            "SELECT indexdef AS \"Value\" FROM pg_indexes WHERE indexname = 'IX_Documents_Dense'").SingleAsync();
+        Assert.Contains("vchordrq", definition);
+        Assert.Contains("vector_cosine_ops", definition);
+        Assert.Contains("build.internal.lists = [8]", definition);
+        Assert.Contains("probes", definition);
+        Assert.DoesNotContain("__rebuild", definition);
+
+        var probe = Document.V(1, 2, 3);
+        var nearest = await db.Documents.OrderBy(x => x.Dense!.CosineDistance(probe))
+            .Take(5).Select(x => x.Name).ToListAsync();
+        Assert.Equal(5, nearest.Count);
+
+        await db.Database.OpenConnectionAsync();
+        await db.Database.ExecuteSqlRawAsync("SET enable_seqscan = off");
+        await using (var command = db.Database.GetDbConnection().CreateCommand())
+        {
+            command.CommandText =
+                "EXPLAIN (COSTS OFF) SELECT \"Id\" FROM \"Documents\" ORDER BY \"Dense\" <=> '[1,2,3]' LIMIT 5";
+            await using var reader = await command.ExecuteReaderAsync();
+            var plan = new List<string>();
+            while (await reader.ReadAsync()) plan.Add(reader.GetString(0));
+            Assert.Contains("IX_Documents_Dense", string.Join("\n", plan));
+        }
+        await db.Database.ExecuteSqlRawAsync("SET enable_seqscan = on");
+        await db.Database.CloseConnectionAsync();
+    }
+
+    [PostgreSqlFact]
+    public async Task Rebuild_is_refused_inside_a_transaction()
+    {
+        await using var db = TestDb.Create(fixture.Connection);
+        await using var tx = await db.Database.BeginTransactionAsync();
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            db.Database.RebuildVectorChordRqIndexAsync<Document>(x => x.Dense, rq => rq.Lists = [8]));
+        Assert.Contains("transaction", exception.Message);
+        await tx.RollbackAsync();
     }
 
     [PostgreSqlFact]

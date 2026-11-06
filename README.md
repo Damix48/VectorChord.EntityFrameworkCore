@@ -139,6 +139,14 @@ modelBuilder.Entity<Document>()
 `ResidualQuantization` and `SphericalCentroids` are also available.
 Residual quantization is not supported for RaBitQ columns.
 
+For `Lists`, use the docs' sizing guidance rather than a guess — `0` means
+"don't partition" (`lists = []`), which is right below 100k rows:
+
+```csharp
+var lists = VectorChordRqTuning.RecommendedLists(estimatedRows);
+rq.Lists = lists == 0 ? null : [lists];
+```
+
 `Probes`, `Epsilon`, `MaxSimRefine`, and `MaxSimThreshold` set default search
 options for this index. Unspecified values retain server defaults.
 
@@ -283,6 +291,40 @@ RQ also exposes `MaxScanTuples`, `MaxSimRefine`, and `MaxSimThreshold`.
   load representative data before building a partitioned index.
 - Raw SQL/direct Npgsql operations do not get EF's automatic storage conversions.
   For binary `COPY`, stage ordinary vectors and use `INSERT ... SELECT quantize_to_...`.
+
+### Rebuilding an RQ index
+
+`build.internal.lists` is trained at index build time and `REINDEX` keeps it, so
+re-tuning means rebuilding on a live table:
+
+```csharp
+await db.Database.RebuildVectorChordRqIndexAsync<Document>(
+    x => x.Embedding,
+    rq =>
+    {
+        rq.Lists = [1000];   // VectorChordRqTuning.RecommendedLists(estimatedRows)
+        rq.Probes = [10];
+    });
+```
+
+It runs `CREATE INDEX CONCURRENTLY`, `DROP INDEX CONCURRENTLY`, and
+`ALTER INDEX ... RENAME`, so it refuses to run inside a transaction and does not
+block searches. Options left unset keep their current values, including options
+this library does not model.
+
+Read the current configuration — from the design-time model, because Npgsql
+strips index storage annotations from the runtime model:
+
+```csharp
+var index = db.GetService<IDesignTimeModel>().Model
+    .FindEntityType(typeof(Document))!.GetIndexes()
+    .Single(i => i.Properties[0].Name == nameof(Document.Embedding));
+var current = index.GetVectorChordRqOptions();      // Lists, Probes, Epsilon, ...
+var metric = index.GetVectorChordDistanceMetric();  // DistanceMetric.Cosine
+```
+
+For the DDL only, `VectorChordRqIndexSql.BuildRebuild(index, options,
+concurrently: false)` returns the statements without running them.
 
 The supported vector API is distance queries, similarity filters, MaxSim, and
 materialization. Arbitrary vector arithmetic/equality, general LINQ operations on

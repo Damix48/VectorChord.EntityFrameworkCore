@@ -16,18 +16,7 @@ public static class VectorChordIndexBuilderExtensions
         ArgumentNullException.ThrowIfNull(builder);
         var options = new VectorChordRqIndexOptions();
         configure?.Invoke(options);
-        VectorOptionValidation.Range(options.BuildThreads, 1, 255, nameof(options.BuildThreads));
-        VectorOptionValidation.Probes(options.Probes);
-        VectorOptionValidation.Range(options.Epsilon, 0, 4, nameof(options.Epsilon));
-        VectorOptionValidation.Range(options.MaxSimRefine, 0, int.MaxValue, nameof(options.MaxSimRefine));
-        VectorOptionValidation.Range(options.MaxSimThreshold, 0, int.MaxValue, nameof(options.MaxSimThreshold));
-        if (options.Lists is { } lists)
-        {
-            if (lists.Length > 8 || lists.Any(v => v < 1 || v > 1 << 24) || !lists.SequenceEqual(lists.Order()))
-                throw new ArgumentException("Lists must contain at most eight ascending values in [1, 16777216].");
-            if (options.Probes is { } probes && probes.Length != lists.Length)
-                throw new ArgumentException("Probes must have the same number of levels as Lists.");
-        }
+        VectorOptionValidation.Index(options);
 
         Configure(builder, "vchordrq", metric);
         var toml = new List<string>();
@@ -108,6 +97,22 @@ public static class VectorChordIndexBuilderExtensions
 
 internal static class VectorOptionValidation
 {
+    public static void Index(VectorChordRqIndexOptions options)
+    {
+        Range(options.BuildThreads, 1, 255, nameof(options.BuildThreads));
+        Probes(options.Probes);
+        Range(options.Epsilon, 0, 4, nameof(options.Epsilon));
+        Range(options.MaxSimRefine, 0, int.MaxValue, nameof(options.MaxSimRefine));
+        Range(options.MaxSimThreshold, 0, int.MaxValue, nameof(options.MaxSimThreshold));
+        if (options.Lists is { } lists)
+        {
+            if (lists.Length > 8 || lists.Any(v => v < 1 || v > 1 << 24) || !lists.SequenceEqual(lists.Order()))
+                throw new ArgumentException("Lists must contain at most eight ascending values in [1, 16777216].");
+            if (options.Probes is { } probes && probes.Length != lists.Length)
+                throw new ArgumentException("Probes must have the same number of levels as Lists.");
+        }
+    }
+
     public static void Range(int? value, int min, int max, string name)
     {
         if (value is { } v && (v < min || v > max))
