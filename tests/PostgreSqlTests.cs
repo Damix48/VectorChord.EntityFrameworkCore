@@ -406,6 +406,35 @@ public sealed class PostgreSqlTests(DatabaseFixture fixture) : IClassFixture<Dat
     }
 
     [PostgreSqlFact]
+    public async Task Rebuild_covers_every_table_of_a_tpc_hierarchy()
+    {
+        var log = new CommandLog();
+        await using var db = TestDb.Create(fixture.Connection, log);
+        db.Add(new Cat { Embedding = Document.V(1, 2, 3) });
+        db.Add(new Dog { Embedding = Document.V(3, 2, 1) });
+        await db.SaveChangesAsync();
+        log.Commands.Clear();
+
+        await db.Database.RebuildVectorChordRqIndexAsync<Animal>(x => x.Embedding, rq =>
+        {
+            rq.Lists = [8];
+            rq.Probes = [2];
+        });
+
+        Assert.Equal(8, log.Commands.Count);
+        var definitions = await db.Database.SqlQueryRaw<string>(
+            "SELECT indexdef AS \"Value\" FROM pg_indexes " +
+            "WHERE indexname IN ('IX_Cat_Embedding', 'IX_Dog_Embedding')").ToListAsync();
+        Assert.Equal(2, definitions.Count);
+        Assert.All(definitions, definition => Assert.Contains("build.internal.lists = [8]", definition));
+
+        var probe = Document.V(1, 2, 3);
+        var nearest = await db.Animals.OrderBy(x => x.Embedding!.CosineDistance(probe))
+            .Take(2).Select(x => x.Id).ToListAsync();
+        Assert.Equal(2, nearest.Count);
+    }
+
+    [PostgreSqlFact]
     public async Task Rebuild_is_refused_inside_a_transaction()
     {
         await using var db = TestDb.Create(fixture.Connection);

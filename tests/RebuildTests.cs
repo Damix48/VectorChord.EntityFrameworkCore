@@ -74,6 +74,29 @@ public sealed class RebuildTests
     }
 
     [Fact]
+    public void Tpc_indexes_are_rebuilt_on_every_concrete_table()
+    {
+        using var db = new TpcDb();
+        var index = db.GetService<IDesignTimeModel>().Model
+            .FindEntityType(typeof(TpcDb.Animal))!.GetIndexes().Single();
+
+        var sql = VectorChordRqIndexSql.BuildRebuild(index, new() { Lists = [10] });
+
+        Assert.Equal(8, sql.Length);
+        Assert.Contains(sql, s => s.Contains(
+            "CREATE INDEX CONCURRENTLY \"IX_Cat_Embedding__rebuild\" ON \"Cat\" USING vchordrq (\"Embedding\" vector_cosine_ops)"));
+        Assert.Contains(sql, s => s.Contains(
+            "CREATE INDEX CONCURRENTLY \"IX_Dog_Embedding__rebuild\" ON \"Dog\" USING vchordrq (\"Embedding\" vector_cosine_ops)"));
+        Assert.Contains("DROP INDEX CONCURRENTLY \"IX_Cat_Embedding\"", sql);
+        Assert.Contains("ALTER INDEX \"IX_Dog_Embedding__rebuild\" RENAME TO \"IX_Dog_Embedding\"", sql);
+
+        var cat = VectorChordRqIndexSql.BuildRebuild(index, StoreObjectIdentifier.Table("Cat", null), new() { Lists = [10] });
+        Assert.Equal(4, cat.Length);
+        Assert.Throws<ArgumentException>(() =>
+            VectorChordRqIndexSql.BuildRebuild(index, StoreObjectIdentifier.Table("Animal", null), new()));
+    }
+
+    [Fact]
     public void Invalid_options_are_rejected_before_any_sql_is_built()
     {
         using var db = new RebuildDb();
@@ -154,6 +177,31 @@ public sealed class RebuildTests
             entity.HasIndex(x => x.Long)
                 .HasDatabaseName("ix_documents_with_a_very_long_name_that_exceeds_the_postgres_identifier_limit")
                 .HasVectorChordRq(DistanceMetric.Cosine);
+        }
+    }
+
+    private sealed class TpcDb : DbContext
+    {
+        public abstract class Animal
+        {
+            public int Id { get; set; }
+            public Vector? Embedding { get; set; }
+        }
+
+        public sealed class Cat : Animal;
+
+        public sealed class Dog : Animal;
+
+        protected override void OnConfiguring(DbContextOptionsBuilder options)
+            => options.UseNpgsql("Host=localhost;Database=unused", o => o.UseVectorChord());
+
+        protected override void OnModelCreating(ModelBuilder model)
+        {
+            model.Entity<Animal>().UseTpcMappingStrategy();
+            model.Entity<Animal>().Property(x => x.Embedding).HasColumnType("vector(3)");
+            model.Entity<Animal>().HasIndex(x => x.Embedding).HasVectorChordRq(DistanceMetric.Cosine);
+            model.Entity<Cat>();
+            model.Entity<Dog>();
         }
     }
 }

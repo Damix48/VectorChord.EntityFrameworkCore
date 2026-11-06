@@ -15,7 +15,8 @@ public static class VectorChordRqIndexSql
 
     /// <summary>
     /// Statements that build a scratch copy of <paramref name="index"/> with
-    /// <paramref name="options"/>, drop the original, and rename the copy into place.
+    /// <paramref name="options"/>, drop the original, and rename the copy into place,
+    /// once per table the index is mapped to (several for TPC).
     /// Options this library does not model are carried over unchanged.
     /// </summary>
     /// <remarks>
@@ -23,6 +24,17 @@ public static class VectorChordRqIndexSql
     /// </remarks>
     public static string[] BuildRebuild(IReadOnlyIndex index, VectorChordRqIndexOptions options,
         bool concurrently = true)
+    {
+        ArgumentNullException.ThrowIfNull(index);
+        return Tables(index).SelectMany(table => BuildRebuild(index, table, options, concurrently)).ToArray();
+    }
+
+    /// <summary>
+    /// Same as <see cref="BuildRebuild(IReadOnlyIndex, VectorChordRqIndexOptions, bool)"/> for one
+    /// table of the index, which TPC hierarchies need.
+    /// </summary>
+    public static string[] BuildRebuild(IReadOnlyIndex index, StoreObjectIdentifier table,
+        VectorChordRqIndexOptions options, bool concurrently = true)
     {
         ArgumentNullException.ThrowIfNull(index);
         ArgumentNullException.ThrowIfNull(options);
@@ -34,15 +46,12 @@ public static class VectorChordRqIndexSql
             throw new ArgumentException("The index has no single operator class; configure it with HasVectorChordRq.", nameof(index));
         if (index.Properties.Count != 1)
             throw new ArgumentException("VectorChord indexes are single-column.", nameof(index));
+        if (!Tables(index).Contains(table))
+            throw new ArgumentException("The index is not mapped to the given table.", nameof(table));
 
-        var entity = index.DeclaringEntityType;
-        var table = entity.GetTableName()
-            ?? throw new ArgumentException("The index's entity type is not mapped to a table.", nameof(index));
-        var schema = entity.GetSchema();
-        var storeObject = StoreObjectIdentifier.Table(table, schema);
         var property = (IReadOnlyProperty)index.Properties[0];
-        var column = property.GetColumnName(storeObject) ?? property.Name;
-        var indexName = index.GetDatabaseName(storeObject) ?? index.Name
+        var column = property.GetColumnName(table) ?? property.Name;
+        var indexName = index.GetDatabaseName(table) ?? index.Name
             ?? throw new ArgumentException("The index has no name.", nameof(index));
         var scratch = ScratchName(indexName);
         var concurrentlySql = concurrently ? "CONCURRENTLY " : "";
@@ -50,11 +59,26 @@ public static class VectorChordRqIndexSql
         // A failed CREATE INDEX CONCURRENTLY leaves an invalid index behind; clearing it first keeps retries working.
         return
         [
-            $"DROP INDEX {concurrentlySql}IF EXISTS {Quote(schema, scratch)}",
-            $"CREATE INDEX {concurrentlySql}{Quote(schema, scratch)} ON {Quote(schema, table)} USING vchordrq ({Quote(column)} {opclass}){Storage(index, options)}",
-            $"DROP INDEX {concurrentlySql}{Quote(schema, indexName)}",
-            $"ALTER INDEX {Quote(schema, scratch)} RENAME TO {Quote(indexName)}",
+            $"DROP INDEX {concurrentlySql}IF EXISTS {Quote(table.Schema, scratch)}",
+            $"CREATE INDEX {concurrentlySql}{Quote(table.Schema, scratch)} ON {Quote(table.Schema, table.Name)} USING vchordrq ({Quote(column)} {opclass}){Storage(index, options)}",
+            $"DROP INDEX {concurrentlySql}{Quote(table.Schema, indexName)}",
+            $"ALTER INDEX {Quote(table.Schema, scratch)} RENAME TO {Quote(indexName)}",
         ];
+    }
+
+    /// <summary>
+    /// The tables the index is physically created on. A TPC hierarchy maps one model index to one
+    /// table per concrete type, so the entity type itself has no table name.
+    /// </summary>
+    private static IReadOnlyList<StoreObjectIdentifier> Tables(IReadOnlyIndex index)
+    {
+        var tables = ((IModel)index.DeclaringEntityType.Model).GetRelationalModel().Tables
+            .Where(table => table.Indexes.Any(mapped => mapped.MappedIndexes.Any(i => ReferenceEquals(i, index))))
+            .Select(table => StoreObjectIdentifier.Table(table.Name, table.Schema))
+            .ToList();
+        if (tables.Count == 0)
+            throw new ArgumentException("The index is not mapped to any table.", nameof(index));
+        return tables;
     }
 
     private static string Storage(IReadOnlyIndex index, VectorChordRqIndexOptions options)

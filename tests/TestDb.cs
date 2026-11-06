@@ -12,6 +12,7 @@ public sealed class TestDb(DbContextOptions<TestDb> options) : DbContext(options
 {
     public DbSet<Document> Documents => Set<Document>();
     public DbSet<Folder> Folders => Set<Folder>();
+    public DbSet<Animal> Animals => Set<Animal>();
 
     protected override void OnModelCreating(ModelBuilder model)
     {
@@ -40,6 +41,13 @@ public sealed class TestDb(DbContextOptions<TestDb> options) : DbContext(options
         documents.HasIndex(x => x.Tokens).HasVectorChordRq(DistanceMetric.MaxSim);
         documents.HasIndex(x => x.Rq8Tokens).HasVectorChordRq(DistanceMetric.MaxSim);
         documents.HasIndex(x => x.Rq4Tokens).HasVectorChordRq(DistanceMetric.MaxSim);
+
+        var animals = model.Entity<Animal>();
+        animals.UseTpcMappingStrategy();
+        animals.Property(x => x.Embedding).HasColumnType("vector(3)");
+        animals.HasIndex(x => x.Embedding).HasVectorChordRq(DistanceMetric.Cosine);
+        model.Entity<Cat>();
+        model.Entity<Dog>();
     }
 
     public static TestDb Create(string? connection = null, CommandLog? log = null)
@@ -92,6 +100,16 @@ public sealed class Document
         HalfRq4Tokens = [H(1, 2, 3), H(3, 2, 1)]
     };
 }
+
+public abstract class Animal
+{
+    public int Id { get; set; }
+    public Vector? Embedding { get; set; }
+}
+
+public sealed class Cat : Animal;
+
+public sealed class Dog : Animal;
 
 public sealed class Folder
 {

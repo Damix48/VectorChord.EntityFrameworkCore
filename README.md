@@ -323,8 +323,13 @@ var current = index.GetVectorChordRqOptions();      // Lists, Probes, Epsilon, .
 var metric = index.GetVectorChordDistanceMetric();  // DistanceMetric.Cosine
 ```
 
-For the DDL only, `VectorChordRqIndexSql.BuildRebuild(index, options,
-concurrently: false)` returns the statements without running them.
+A model index on a TPC hierarchy is created once per concrete table; the rebuild
+covers all of them. For one table only, or for the DDL without running it:
+
+```csharp
+string[] statements = VectorChordRqIndexSql.BuildRebuild(
+    index, StoreObjectIdentifier.Table("Cats", null), options, concurrently: false);
+```
 
 The supported vector API is distance queries, similarity filters, MaxSim, and
 materialization. Arbitrary vector arithmetic/equality, general LINQ operations on
